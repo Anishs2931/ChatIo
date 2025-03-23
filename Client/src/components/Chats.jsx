@@ -1,109 +1,225 @@
-
 import React, { useContext, useState, useEffect } from 'react'
 import { io } from 'socket.io-client'
 import {useAuth} from '@clerk/clerk-react'
 import { CurrentUserContextObj } from '../contexts/CurrentUserContext'
 import Chat from './UserChat'
 import axios from 'axios'
-const Chats = () => {
 
+const Chats = () => {
   const {signOut}=useAuth()
   const { currentUser } = useContext(CurrentUserContextObj)
   const [chats, setChats] = useState([])
   const [activeChat, setActiveChat] = useState(null)
   const [socket, setSocket] = useState(null)
   const [message,setMessage]=useState('')
+  const [showAddChat, setShowAddChat] = useState(false)
+  const [searchEmail, setSearchEmail] = useState('')
+  const [searchResult,setSearchResult]=useState({})
+  const [showResult,setShowResult]=useState(false)
+  const [searchError,setSearchError]=useState('')
+  const [errorStatus,setErrorStatus]=useState(false)
+  const [isNewChat,setIsNewChat]=useState(false)
+  const [activeUser, setActiveUser] = useState(null)
+  const [messages, setMessages] = useState([])
+
+  useEffect(()=>{
+    if(activeChat){
+      setActiveUser(getOtherUserFromChat(activeChat.chatId))
+    }
+  },[activeChat])
 
   useEffect(() => {
     const newSocket = io("http://localhost:4000")
     setSocket(newSocket)
-
     return () => {
       if (newSocket) newSocket.disconnect()
     }
   }, [])
 
   useEffect(() => {
-    const fetchChats = async () => {
-      try {
-        const res = await axios.get('http://localhost:4000/chats', {
-          headers: {
-            'Authorization': `Bearer ${currentUser?.id}`
-          }
-        })
-        if (res.status === 200) {
-          setChats(res.data.payload)
-        }
-      } catch (error) {
-        console.error('Failed to fetch chats:', error)
-      }
-    }
-
     if (currentUser) {
-      fetchChats()
+      getChats()
     }
   }, [currentUser])
 
   useEffect(() => {
     if (!socket) return
-
     socket.on("receiveMessage", () => {
-      const fetchChats = async () => {
-        try {
-          const res = await axios.get('http://localhost:4000/chats', {
-            headers: {
-              'Authorization': `Bearer ${currentUser?.id}`
-            }
-          })
-          if (res.status === 200) {
-            setChats(res.data.payload)
-          }
-        } catch (error) {
-          console.error('Failed to fetch chats:', error)
-        }
-      }
-      fetchChats()
+      getChats()
     })
-
     return () => {
       socket.off("receiveMessage")
     }
-  }, [socket, currentUser])
-  
-  const users = [
-    { id: 1, name: 'Sarah Johnson', avatar: '/api/placeholder/40/40', lastSeen: 'online', unread: 3, 
-      lastMessage: 'Hey', time: '10:45 AM' },
-    { id: 2, name: 'Mike Chen', avatar: '/api/placeholder/40/40', lastSeen: '5 min ago', unread: 0, 
-      lastMessage: 'I sent you the project files', time: '9:30 AM' },
-    { id: 3, name: 'Emily Rodriguez', avatar: '/api/placeholder/40/40', lastSeen: '2 hours ago', unread: 1, 
-      lastMessage: 'The presentation went well!', time: 'Yesterday' },
-    { id: 4, name: 'David Kim', avatar: '/api/placeholder/40/40', lastSeen: 'yesterday', unread: 0, 
-      lastMessage: 'Let me know when youre free', time: 'Yesterday' },
-    { id: 5, name: 'Jasmine Taylor', avatar: '/api/placeholder/40/40', lastSeen: '3 days ago', unread: 0, 
-      lastMessage: 'Thanks for your help!', time: 'Monday' },
-    { id: 6, name: 'Work Group', avatar: '/api/placeholder/40/40', lastSeen: '24 participants', unread: 12, 
-      lastMessage: 'Alex: Meeting rescheduled to 2pm', time: 'Monday' },
-  ];
+  }, [socket])
 
-  const messages = [
-    { id: 1, userId: 1, text: 'Hey, how are you?', sent: false, time: '10:30 AM' },
-    { id: 2, userId: 1, text: 'I was wondering if we could meet tomorrow to discuss the project?', sent: false, time: '10:32 AM' },
-    { id: 3, userId: 0, text: 'Hi Sarah! I\'m doing well, thanks for asking.', sent: true, time: '10:40 AM' },
-    { id: 4, userId: 0, text: 'Yes, tomorrow works for me. How about 2pm at the coffee shop?', sent: true, time: '10:42 AM' },
-    { id: 5, userId: 1, text: 'Perfect! 2pm at Coffee Corner. See you then!', sent: false, time: '10:45 AM' },
-  ];
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    // In a real app, you would add the message to the messages array here
-    setMessage('');
-  };
-
-  function handleSignOut(){
-      signOut();
+  const getOtherUserFromChat = (chat) => {
+    if (!chat?.users) return null;
+    return chat.users.find(user => user.userId !== currentUser.userId);
   }
 
-  const activeUser = users.find(user => user.id === activeChat);
+  async function getChats(){
+    try {
+      let res = await axios.get('http://localhost:4000/chats', {
+        params: { userId: currentUser.userId }
+      })
+      if(res?.status === 200) {
+        setChats(res?.data?.payload)
+      }
+    } catch(err) {
+      console.error('Failed to fetch chats:', err)
+    }
+  }
+
+  function handleSignOut(){
+    signOut()
+  }
+
+  async function newChat(){
+    try{
+      let reqObj = {
+        userOne: currentUser,
+        userTwo: searchResult
+      }
+      console.log(reqObj)
+      let req = await axios.post('http://localhost:4000/chats/new', reqObj)
+      if(req.status === 200){
+        getChats()     
+        setActiveChat(req.data.payload.chatId)
+        setShowAddChat(false)
+        setSearchEmail('')
+        setSearchResult({})
+        setShowResult(false)
+      }
+    } catch(err) {
+      console.log('Failed to create chat:', err)
+    }
+  }
+
+  async function searchNewUser() {
+    try {
+      const res = await axios.post('http://localhost:4000/users/find', {email: searchEmail})
+      
+      if(res.status === 200) {
+        setSearchResult(res.data.payload)
+        
+        if(res.data.payload?.userId && res.data.payload.userId !== currentUser.userId) {
+          let chatRes = await axios.post('http://localhost:4000/chats/find', {
+            userId: currentUser.userId,
+            otherUserId: res.data.payload.userId
+          })
+          
+          setIsNewChat(!chatRes.data.exists)
+        } else {
+          setIsNewChat(false)
+        }
+  
+        setErrorStatus(false)
+        setSearchError('')
+        setShowResult(true)
+      }
+    } catch(err) {
+      setSearchResult({})
+      setShowResult(false)
+      setIsNewChat(false)
+      setErrorStatus(true)
+      setSearchError(err.response?.data?.message || 'User not found')
+    }
+  }
+
+  function addChat(){
+    return (
+      <div className="modal" style={{
+        display: showAddChat ? 'block' : 'none',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: 1000
+      }}>
+        <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-content p-4" style={{ borderRadius: '15px' }}>
+            <h5 className="mb-3">Add New Chat</h5>
+            <div className="input-group mb-3">
+              <input
+                type="email"
+                className="form-control"
+                placeholder="Enter user email"
+                value={searchEmail}
+                onChange={(e) => setSearchEmail(e.target.value)}
+              />
+              <button 
+                className="btn"
+                style={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white'
+                }}
+                onClick={searchNewUser}
+              >
+                Search
+              </button>
+            </div>
+            <div>
+              {showResult && 
+                <div className='d-flex align-items-center w-100 py-3 border-bottom px-2'>         
+                  <div className="me-3">
+                    <img 
+                      src={searchResult?.profileImageUrl} 
+                      className="rounded-circle" 
+                      style={{ width: '40px', height: '40px' }}
+                      alt=''
+                    />
+                  </div>
+                  <div className='w-100'>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <h6 className="mb-0">{searchResult?.firstName}</h6>
+                    </div>
+                  </div>
+                  <div className='mx-auto'>
+                    {isNewChat && 
+                      <div>
+                        <button className="btn btn-4 btn-success" onClick={newChat}>
+                          Add
+                        </button>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+              {errorStatus && 
+                <div><p className='text-warning ms-2'>{searchError}</p></div>
+              }
+            </div>
+            <button 
+              className="btn btn-link text-muted"
+              onClick={() => {
+                setShowAddChat(false)
+                setShowResult(false)
+                setSearchResult({})
+                setSearchEmail('')
+                setErrorStatus(false)
+                setSearchError('')
+                setIsNewChat(false)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const handleSendMessage = (e) => {
+    e.preventDefault()
+    if (!message.trim()) return
+    
+    // Add message sending logic here
+    
+    setMessage('')
+  }
 
   return (
     <div className="vh-100" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
@@ -112,21 +228,33 @@ const Chats = () => {
           <div className="col-1 col-md-1 d-none d-md-block px-0">
             <div className="bg-white h-100 rounded-start d-flex flex-column align-items-center py-3">
               <div className="mb-4">
-                <img src={`${currentUser?.profileImageUrl}`} className="rounded-circle border-3" style={{ borderColor: '#667eea', borderStyle: 'solid' }} alt="User" width="40" />
+                <img src={currentUser?.profileImageUrl} className="rounded-circle border-3" 
+                  style={{ borderColor: '#667eea', borderStyle: 'solid' }} alt="User" width="40" />
               </div>
               <div className="nav flex-column text-center flex-grow-1">
                 <div className="nav-item py-3" style={{ color: '#667eea' }}>
                   <i className="fas fa-comment-dots fs-4"></i>
+                </div>
+                <div className='nav-item py-3'>
+                  <button className='btn py-0 pt-1' 
+                    style={{ color: '#667eea' }} 
+                    onClick={() => setShowAddChat(true)}
+                  >
+                    <i className='fas fa-plus fs-4'></i>
+                  </button>
                 </div>
                 <div className="nav-item py-3">
                   <i className="fas fa-cog fs-4 text-secondary"></i>
                 </div>
               </div>
               <div>
-                <button className='btn btn-4 text-danger' onClick={handleSignOut}><i className="fas fa-sign-out-alt fs-4 text-secondary"></i></button>
+                <button className='btn btn-4 text-danger' onClick={handleSignOut}>
+                  <i className="fas fa-sign-out-alt fs-4 text-secondary"></i>
+                </button>
               </div>
             </div>
           </div>
+
           <div className="col-4 col-md-3 px-0">
             <div className="bg-white h-100 d-flex flex-column">
               <div className="p-3 border-bottom" style={{ background: 'rgba(255, 255, 255, 0.95)' }}>
@@ -134,86 +262,85 @@ const Chats = () => {
                   <span className="input-group-text bg-transparent border-end-0">
                     <i className="fas fa-search text-secondary"></i>
                   </span>
-                  <input type="text" className="form-control border-start-0" placeholder="Search or start new chat" style={{ background: 'rgba(118, 75, 162, 0.1)' }} />
+                  <input type="text" className="form-control border-start-0" 
+                    placeholder="Search or start new chat" 
+                    style={{ background: 'rgba(118, 75, 162, 0.1)' }} 
+                  />
                 </div>
               </div>
               <div>
-                {users.map((user) => (
-                  <div 
-                    key={user.id} 
-                    className={`d-flex align-items-center w-100 py-3 border-bottom px-2 ${activeChat === user.id ? 'active' : ''}`}
-                    onClick={() => setActiveChat(user.id)}
-                    style={{ 
-                      cursor: 'pointer',
-                      background: activeChat === user.id ? 'rgba(118, 75, 162, 0.2)' : 'transparent' 
-                    }}
-                  >
-                    <div className="position-relative me-3">
-                      <img 
-                        src={currentUser?.profileImageUrl} 
-                        className="rounded-circle" 
-                        style={{ 
-                          width: '40px',
-                          height: '40px'
-                        }} 
-                        alt=''
-                      />
-                      {user.lastSeen === 'online'? (
-                        <span 
-                          className="position-absolute bottom-0 end-0 rounded-circle"
-                          style={{
-                            width: '12px',
-                            height: '12px',
-                            background: '#4caf50',
-                            border: '1px solid white'
-                          }}
-                        ></span>):<></>
-                      }
-                    </div>
-                    <div className='w-100'>
-                      <div className="d-flex justify-content-between align-items-center">
-                        <h6 className="mb-0">{user.name}</h6>
-                        <small className="text-muted">{user.time}</small>
+                {chats.map((chat) => {
+                  const otherUserId = getOtherUserFromChat(chat)
+                  return (
+                    <div 
+                      key={chat.chatId} 
+                      className={`d-flex align-items-center w-100 py-3 border-bottom px-2 ${activeChat === chat.chatId ? 'active' : ''}`}
+                      onClick={() => setActiveChat(chat.chatId)}
+                      style={{ 
+                        cursor: 'pointer',
+                        background: activeChat === chat.chatId ? 'rgba(118, 75, 162, 0.2)' : 'transparent' 
+                      }}
+                    >
+                      <div className="position-relative me-3">
+                        <img 
+                          src={otherUserId?.profileImageUrl || 'default-avatar.png'} 
+                          className="rounded-circle" 
+                          style={{ width: '40px', height: '40px' }}
+                          alt=''
+                        />
                       </div>
-                      <div className='d-flex justify-content-between align-items-center'>
-                      <p className="mb-0 text-muted" style={{ fontSize: '0.85rem' }}>
-                        {user.lastMessage}
-                      </p>
-                      <div>
-                        {user.unread > 0 && (
-                        <div 
-                          className="ms-2 d-flex align-items-center justify-content-center rounded-circle"
-                          style={{
-                            minWidth: '20px',
-                            height: '20px',
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                            color: 'white',
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold'
-                          }}
-                        >
-                          {user.unread}
+                      <div className='w-100'>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <h6 className="mb-0">{otherUserId?.firstName || 'Unknown User'}</h6>
+                          <small className="text-muted">
+                            {chat.lastMessageAt ? new Date(chat.lastMessageAt).toLocaleTimeString() : ''}
+                          </small>
                         </div>
-                        )}
-                      </div>
+                        <div className='d-flex justify-content-between align-items-center'>
+                          <p className="mb-0 text-muted" style={{ fontSize: '0.85rem' }}>
+                            {chat.messages[chat.messages.length - 1]?.text || 'No messages yet'}
+                          </p>
+                          {chat.unread > 0 && (
+                            <div className="ms-2 d-flex align-items-center justify-content-center rounded-circle"
+                              style={{
+                                minWidth: '20px',
+                                height: '20px',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: 'white',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {chat.unread}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </div>
-          
+
           <div className="col-8 col-md-8 px-0">
             <div className="bg-white h-100 rounded-end d-flex flex-column">
-              {activeUser ? (
+              {activeChat ? (
                 <>
-                  <div className="p-3 border-bottom d-flex align-items-center" style={{ background: 'rgba(255, 255, 255, 0.95)' }}>
-                    <img src={activeUser.avatar} className="rounded-circle me-3" style={{ width: '45px', height: '45px', border: '2px solid #667eea' }} alt={activeUser.name} />
+                  <div className="p-3 border-bottom d-flex align-items-center" 
+                    style={{ background: 'rgba(255, 255, 255, 0.95)' }}
+                  >
+                    <img 
+                      src={activeUser?.profileImageUrl || 'default-avatar.png'} 
+                      className="rounded-circle me-3" 
+                      style={{ width: '45px', height: '45px', border: '2px solid #667eea' }} 
+                      alt={activeUser?.firstName} 
+                    />
                     <div className="flex-grow-1">
-                      <h6 className="mb-0">{activeUser.name}</h6>
-                      <small className="text-muted">{activeUser.lastSeen}</small>
+                      <h6 className="mb-0">{activeUser?.firstName}</h6>
+                      <small className="text-muted">
+                        {activeUser?.isOnline ? 'Online' : 'Offline'}
+                      </small>
                     </div>
                     <div>
                       <button className="btn border-0 me-2" style={{ color: '#667eea' }}>
@@ -227,37 +354,41 @@ const Chats = () => {
                       </button>
                     </div>
                   </div>
-                  <div 
-                    className="flex-grow-1 overflow-auto p-3" 
-                    style={{ 
-                      background: 'rgba(236, 236, 236, 0.5)'
-                    }}
+
+                  <div className="flex-grow-1 overflow-auto p-3" 
+                    style={{ background: 'rgba(236, 236, 236, 0.5)' }}
                   >
                     <div className="d-flex flex-column">
                       {messages.map((msg) => (
                         <div 
-                          key={msg.id} 
-                          className={`mb-3 d-flex ${msg.sent ? 'justify-content-end' : 'justify-content-start'}`}
+                          key={msg.messageId} 
+                          className={`mb-3 d-flex ${msg.senderId === currentUser.userId ? 'justify-content-end' : 'justify-content-start'}`}
                         >
                           <div 
                             style={{
                               maxWidth: '75%',
                               padding: '10px 15px',
-                              borderRadius: msg.sent ? '15px 15px 0px 15px' : '15px 15px 15px 0px',
-                              background: msg.sent ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'white',
-                              color: msg.sent ? 'white' : 'black',
+                              borderRadius: msg.senderId === currentUser.userId ? '15px 15px 0px 15px' : '15px 15px 15px 0px',
+                              background: msg.senderId === currentUser.userId ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'white',
+                              color: msg.senderId === currentUser.userId ? 'white' : 'black',
                               boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
                             }}
                           >
                             <p className="mb-0">{msg.text}</p>
-                            <small className={`d-block text-end ${msg.sent ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '0.7rem' }}>
-                              {msg.time} {msg.sent && <i className="fas fa-check-double ms-1"></i>}
+                            <small className={`d-block text-end ${msg.senderId === currentUser.userId ? 'text-white-50' : 'text-muted'}`} 
+                              style={{ fontSize: '0.7rem' }}
+                            >
+                              {new Date(msg.timestamp).toLocaleTimeString()} 
+                              {msg.senderId === currentUser.userId && (
+                                <i className={`fas fa-${msg.read ? 'check-double' : 'check'} ms-1`}></i>
+                              )}
                             </small>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+
                   <div className="p-3 border-top" style={{ background: 'rgba(255, 255, 255, 0.95)' }}>
                     <form onSubmit={handleSendMessage} className="d-flex align-items-center">
                       <button type="button" className="btn text-secondary me-2">
@@ -306,6 +437,7 @@ const Chats = () => {
                   <p className="text-muted">Select a conversation or start a new chat</p>
                   <button 
                     className="btn rounded-pill px-4 mt-3"
+                    onClick={() => setShowAddChat(true)}
                     style={{
                       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                       color: 'white'
@@ -319,8 +451,9 @@ const Chats = () => {
           </div>
         </div>
       </div>
+      {showAddChat && addChat()}
     </div>
-  );
-};
+  )
+}
 
-export default Chats;
+export default Chats

@@ -10,15 +10,15 @@ function CurrentUserContext({ children }) {
   useEffect(() => {
     if (isLoaded && user) {
       const userData = {
-        id: user.id,
+        userId:'',
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.emailAddresses[0].emailAddress,
         profileImageUrl: user.imageUrl,
-        isOnline: true,
         chats: []
       }
       setCurrentUser(userData)
+      
     }
   }, [isLoaded, user])
 

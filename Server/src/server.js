@@ -7,6 +7,7 @@ const cors=require('cors')
 const socketRoute=require('./socket')
 const authRoutes=require('./routes/authRoutes')
 const chatRoute=require('./routes/chatRoute')
+const userRoute=require('./routes/userRoutes')
 require('dotenv').config()
 
 
@@ -34,4 +35,5 @@ mongoose.connect(dburl)
 socketRoute(io)
 app.use('/authorize',authRoutes)
 app.use('/chats',chatRoute)
+app.use('/users',userRoute)
 

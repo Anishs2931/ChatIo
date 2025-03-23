@@ -1,0 +1,12 @@
+POST http://localhost:4000/authorize
+Content-Type: application/json
+
+{
+  "id": "user_2uP2qzkGMPDgedRSiOLQDsATwod",
+  "firstName": "Anish",
+  "lastName": null,
+  "email": "anishs2024all@gmail.com",
+  "profileImageUrl": "https://img.clerk.com/eyJ0eXBlIjoicHJveHkiLCJzcmMiOiJodHRwczovL2ltYWdlcy5jbGVyay5kZXYvb2F1dGhfZ29vZ2xlL2ltZ18ydVAycjJJdFc3cWJmQUc5MXYyWUNzb0dTTlcifQ",     
+  "isOnline": true,
+  "chats": []
+}
